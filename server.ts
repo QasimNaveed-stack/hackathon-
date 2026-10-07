@@ -23,7 +23,8 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Mount API router under /api
-  app.use('/api', createApiRouter());
+  const apiRouter = await createApiRouter();
+  app.use('/api', apiRouter);
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {

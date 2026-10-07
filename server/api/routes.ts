@@ -3,21 +3,14 @@
  * File: server/api/routes.ts
  *
  * Assembles and wires together:
- * - Infrastructure: DatabaseClient, DatabaseSeeder, Repositories, GeminiAIParser
+ * - Standalone Database Module: DatabaseModule (PostgreSQL / fallback)
  * - Domain: TranscriptProcessingService
+ * - Infrastructure: CompositeAIParser (OpenRouter / Gemini)
  * - Controllers: AuthController, ProjectController, TaskController, TeamController, TranscriptController
  */
 
 import { Router } from 'express';
-import { DatabaseClient, DatabaseSeeder } from '../infrastructure/database/index.ts';
-import {
-  UserRepository,
-  ProjectRepository,
-  TaskRepository,
-  TransactionManager
-} from '../infrastructure/repositories/index.ts';
-import { GeminiAIParser } from '../infrastructure/ai/GeminiAIParser.ts';
-import { OpenRouterAIParser } from '../infrastructure/ai/OpenRouterAIParser.ts';
+import { DatabaseModule } from '../database/DatabaseModule.ts';
 import { CompositeAIParser } from '../infrastructure/ai/CompositeAIParser.ts';
 import { TranscriptProcessingService } from '../domain/services/TranscriptProcessingService.ts';
 import { authMiddleware, requireRole } from './middleware/auth.ts';
@@ -27,23 +20,20 @@ import { TaskController } from './controllers/TaskController.ts';
 import { TeamController } from './controllers/TeamController.ts';
 import { TranscriptController } from './controllers/TranscriptController.ts';
 
-export function createApiRouter(): Router {
+export async function createApiRouter(): Promise<Router> {
   const router = Router();
 
-  // 1. Initialize Database & Run Idempotent Seed
-  const dbClient = DatabaseClient.getInstance();
-  DatabaseSeeder.seed(dbClient);
+  // 1. Initialize Standalone Database Module (PostgreSQL with fallback)
+  const dbModule = await DatabaseModule.initialize();
+  const userRepo = dbModule.userRepository;
+  const projectRepo = dbModule.projectRepository;
+  const taskRepo = dbModule.taskRepository;
+  const transactionManager = dbModule.transactionManager;
 
-  // 2. Initialize Repositories
-  const userRepo = new UserRepository(dbClient);
-  const projectRepo = new ProjectRepository(dbClient);
-  const taskRepo = new TaskRepository(dbClient);
-  const transactionManager = new TransactionManager(dbClient);
-
-  // 3. Initialize AI Parser (Supports OpenRouter and Gemini via Composite)
+  // 2. Initialize AI Parser (OpenRouter + Gemini via Composite)
   const aiParser = new CompositeAIParser();
 
-  // 4. Initialize Domain Service (Inversion of Control)
+  // 3. Initialize Domain Service (Inversion of Control)
   const transcriptService = new TranscriptProcessingService(
     userRepo,
     projectRepo,
@@ -52,14 +42,23 @@ export function createApiRouter(): Router {
     transactionManager
   );
 
-  // 5. Initialize Controllers
+  // 4. Initialize Controllers
   const authController = new AuthController(userRepo);
   const projectController = new ProjectController(projectRepo, taskRepo, userRepo);
   const taskController = new TaskController(taskRepo, projectRepo, userRepo);
   const teamController = new TeamController(userRepo);
-  const transcriptController = new TranscriptController(transcriptService, userRepo, dbClient);
+  const transcriptController = new TranscriptController(transcriptService, userRepo, dbModule.resetDatabase);
 
   const auth = authMiddleware(userRepo);
+
+  // Database info status endpoint
+  router.get('/db-status', (req, res) => {
+    res.json({
+      engine: dbModule.engineName,
+      status: 'active',
+      time: new Date().toISOString()
+    });
+  });
 
   // --- Public Auth Routes ---
   router.post('/auth/login', authController.login);

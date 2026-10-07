@@ -49,7 +49,7 @@ The architecture strictly adheres to the hackathon's architectural principles:
 * **Frontend**: React 19, TypeScript, Tailwind CSS, Lucide React
 * **Backend**: Node.js, Express 4, TypeScript (`tsx`)
 * **AI Engine**: OpenRouter API (`OPENROUTER_API_KEY`) with fallback to Gemini 3.8 Flash (`@google/genai`) and deterministic testing analyzer
-* **Database**: Persistent file-backed JSON document engine with ACID snapshot isolation & atomic write-and-rename
+* **Database**: Native PostgreSQL Module (`pg` pool, schema migrations, ACID transactions) with automated fallback to persistent file storage when DATABASE_URL is not supplied. Supported on Aiven, Supabase, Neon, Cloud SQL, and local Postgres.
 * **Build / Dev**: Vite dev server mounted in Express middleware mode (`server.ts` on Port 3000)
 
 ---
@@ -99,7 +99,12 @@ The architecture strictly adheres to the hackathon's architectural principles:
 │   │   ├── middleware/
 │   │   │   └── auth.ts                # Session token & role authorization
 │   │   └── routes.ts                  # Dependency injection & router
-│   ├── domain/
+│   ├── database/                      # Standalone PostgreSQL Database Module
+│   │   ├── PostgresClient.ts          # Connection pool & DDL migrations
+│   │   ├── PostgresSeeder.ts          # 10 accounts seeder
+│   │   ├── repositories/              # PostgresUserRepository, ProjectRepository, etc.
+│   │   └── DatabaseModule.ts          # Master Database Provider & fallback
+│   ├── domain/                        # Pure Domain Layer (ZERO DB/SDK dependencies)
 │   │   ├── errors/                    # Domain-specific errors
 │   │   ├── interfaces/                # Repositories & AI Parser abstractions
 │   │   ├── models/                    # User, Project, Task, AITypes
@@ -107,8 +112,7 @@ The architecture strictly adheres to the hackathon's architectural principles:
 │   │   └── services/                  # TranscriptProcessingService (Orchestrator)
 │   └── infrastructure/
 │       ├── ai/                        # OpenRouterAIParser & GeminiAIParser
-│       ├── database/                  # DatabaseClient & DatabaseSeeder
-│       └── repositories/              # Concrete implementations of IUserRepository, etc.
+│       └── database/                  # Local fallback persistent storage
 ├── src/
 │   ├── components/
 │   │   └── Navbar.tsx                 # Role-aware navigation & demo switcher

@@ -27,7 +27,7 @@ export class TranscriptController {
   constructor(
     private transcriptService: ITranscriptProcessingService,
     private userRepo: IUserRepository,
-    private dbClient: DatabaseClient
+    private resetDb?: () => Promise<void>
   ) {}
 
   public createFromTranscript = async (req: AuthenticatedRequest, res: Response) => {
@@ -135,7 +135,9 @@ export class TranscriptController {
         });
       }
 
-      DatabaseSeeder.resetToSeed(this.dbClient);
+      if (this.resetDb) {
+        await this.resetDb();
+      }
 
       return res.json({
         success: true,
